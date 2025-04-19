@@ -3,12 +3,31 @@ from discord.ext import commands
 import datetime
 import random
 import aiohttp
+import sqlite3
+import os
 
+#Discord
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.presences = True
 client = commands.Bot(command_prefix='-', help_command=None, intents=intents)
+
+#SQLite
+conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xp_system.db"))
+
+
+cursor = conn.cursor()
+
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    xp INTEGER DEFAULT 0
+)
+''')
+
+conn.commit()
+conn.close()
 
 async def get_gif_url(query):
     api_key = "jtyizMERY5ZSUDoGW8Usq7mHKkiORRXZ"
@@ -22,6 +41,37 @@ async def get_gif_url(query):
                     gifs = random.choice(gifs)
                     return gifs['images']['original']['url']
     return None
+
+#XP System
+def add_xp(user_id, xp_to_add):
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xp_system.db"))
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT xp FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    
+    if result:
+        new_xp = result[0] + xp_to_add
+        cursor.execute('UPDATE users SET xp = ? WHERE user_id = ?', (new_xp, user_id))
+    else:
+        cursor.execute('INSERT INTO users (user_id, xp) VALUES(?, ?)', (user_id, xp_to_add))
+
+    conn.commit()
+    conn.close()
+
+def get_xp(user_id):
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xp_system.db"))
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT xp FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    else:
+        return 0
+
+
+
 
 
 @client.event
@@ -56,6 +106,12 @@ async def clear(ctx, number: int = None):
     await ctx.send(f"{number} messages cleared! {ctx.author.mention}", delete_after=20)
 
 
+@client.command(help="Adds XP to a user!")
+async def addxp(ctx,  value: int, member: discord.Member = None):
+    member = member or ctx.author
+    add_xp(member.id, value)
+    await ctx.message.reply(f"**{value}** XP added to **{member.name}**.")
+
 @client.command(help="show information about an user!")
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -67,6 +123,7 @@ async def userinfo(ctx, member: discord.Member = None):
     embed.add_field(name="Discord Member Since: ", value=member.created_at.strftime("%d/%m/%Y"), inline = True)
     embed.add_field(name="Joined Server At: ", value=member.joined_at.strftime("%d/%m/%Y"), inline = True)
     embed.add_field(name="Top Role: ", value=member.top_role.name, inline=False)
+    embed.add_field(name="User XP", value=f"{get_xp(member.id)} XP", inline=True)
     await ctx.message.reply(embed=embed)
 
 @client.command(help="show you all my commands!")
@@ -75,10 +132,14 @@ async def help(ctx):
     if ctx.guild.icon:
         embed.set_thumbnail(url=ctx.guild.icon.url)
     embed.add_field(name='"INFO" COMMAND', value="Info about a certain command: '-info [command]'", inline=True )
-    embed.add_field(name="General:", value="-ping; -clock; -userinfo;", inline=False)
+    embed.add_field(name="General:", value="-ping; -clock; -userinfo; -serverinfo", inline=False)
+    embed.add_field(name="Fun: ", value="-gif", inline=False)
+
     embed.add_field(name="Testing: ", value="-fakejoin", inline=False)
 
     await ctx.message.reply(embed=embed)
+
+
 
 @client.command(help="tell you the command description")
 async def info(ctx, command: str = None):
@@ -121,6 +182,14 @@ async def welcome_message(member, channel):
     url = await get_gif_url("welcome")
     await channel.send(url)
 
+@client.command(help="give you a GIF with given keyword")
+async def gif(ctx, keyword: str = None):
+    if not keyword:
+        await ctx.message.reply("**ERROR: *GIF keyword missing.***")
+        return
+    url = await get_gif_url(keyword)
+    await ctx.message.reply(f"{url}")
+
 
 @client.event
 async def on_member_join(member):
@@ -134,4 +203,4 @@ async def fakejoin(ctx):
     await welcome_message(ctx.author, ctx.channel)
 
 
-client.run()
+client.run("")
